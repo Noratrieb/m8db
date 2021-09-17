@@ -10,6 +10,13 @@ fn main() {
         }
     };
 
+    println!(
+        "m8db - M8 Debugger
+(C) Nilstrieb (https://github.com/Nilstrieb/m8db)
+Type 'help' for help
+    "
+    );
+
     let program = std::fs::read_to_string(filename).unwrap();
     let statements = match stmt::parse(&program) {
         Ok(stmts) => stmts,
