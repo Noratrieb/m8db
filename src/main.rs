@@ -26,4 +26,5 @@ Type 'help' for help
         }
     };
     db::run(statements);
+    println!("Execution finished.");
 }

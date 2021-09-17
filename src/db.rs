@@ -25,10 +25,10 @@ impl Vm {
             Stmt::Dec(r) => self.registers[r] -= 1,
             Stmt::IsZero(r, line) => {
                 if self.registers[r] == 0 {
-                    self.pc = line;
+                    self.pc = line - 1;
                 }
             }
-            Stmt::Jump(line) => self.pc = line,
+            Stmt::Jump(line) => self.pc = line - 1,
             Stmt::Stop => return VmState::Stop,
         }
         if self.breakpoints.contains(&self.pc) {
@@ -39,8 +39,12 @@ impl Vm {
     }
 
     fn run(&mut self) -> VmState {
-        while let VmState::Run = self.step() {}
-        VmState::Break
+        loop {
+            match self.step() {
+                state @ (VmState::Break | VmState::Stop) => return state,
+                _ => {}
+            }
+        }
     }
 }
 
@@ -49,14 +53,15 @@ enum VmInstruction {
     Step,
     Run,
     Break(usize),
+    Set(usize, usize),
 }
 
 pub fn run(stmts: Vec<Stmt>) {
-    let max_register = max_register(&stmts);
+    let max_register_index = max_register(&stmts);
     let mut vm = Vm {
         stmts,
         pc: 0,
-        registers: vec![0; max_register],
+        registers: vec![0; max_register_index + 1],
         breakpoints: vec![],
     };
 
@@ -80,6 +85,7 @@ pub fn run(stmts: Vec<Stmt>) {
                     }
                 }
             }
+            VmInstruction::Set(r, value) => vm.registers[r] = value,
         }
     }
 }
@@ -104,6 +110,10 @@ fn debug_input(vm: &Vm) -> VmInstruction {
                     },
                     None => print_breakpoints(vm),
                 },
+                "set" => match parse_set_command(&mut iter) {
+                    Some((reg, value)) => return VmInstruction::Set(reg, value),
+                    None => println!("Invalid arguments provided"),
+                },
                 "c" | "continue" => return VmInstruction::Run,
                 "s" | "step" => return VmInstruction::Step,
                 _ => {}
@@ -111,6 +121,12 @@ fn debug_input(vm: &Vm) -> VmInstruction {
             None => {}
         }
     }
+}
+
+fn parse_set_command<'a>(iter: &mut impl Iterator<Item = &'a str>) -> Option<(usize, usize)> {
+    let reg: usize = iter.next().and_then(|reg| reg.parse().ok())?;
+    let value: usize = iter.next().and_then(|value| value.parse().ok())?;
+    Some((reg, value))
 }
 
 fn max_register(stmts: &[Stmt]) -> usize {
@@ -135,11 +151,12 @@ fn print_registers(vm: &Vm) {
 }
 
 fn print_program(vm: &Vm) {
-    use std::cmp::{max, min};
+    use std::cmp::min;
 
     println!("Program:");
-    let lower = max(vm.pc, 5) - 5;
-    let higher = min(vm.pc, vm.stmts.len() - 6) + 5;
+    let lower = if vm.pc > 5 { vm.pc - 5 } else { 0 };
+    let len = vm.stmts.len();
+    let higher = if len < 5 { len } else { min(vm.pc + 5, len) };
 
     for i in lower..higher {
         let stmt = vm.stmts[i];
@@ -169,6 +186,7 @@ fn print_help() {
         "List of commands and their aliases:
 
     step (s) -- Steps the program forward by one step
+    set <register> <value> -- Sets a register to a value
     break <line> (b) -- Set a breakpoint to a line, use again to toggle
     continue (c) -- Run the program until the next breakpoint
     register (r) -- Shows the contents of the registers
