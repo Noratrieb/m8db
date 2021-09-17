@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "m8ni-rs"
+name = "m8db"
 version = "0.1.0"
