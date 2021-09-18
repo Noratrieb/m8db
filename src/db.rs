@@ -94,14 +94,19 @@ pub fn run(code: Code) {
                     eprintln!("error: Program ran out of bounds.");
                     return;
                 }
-                VmState::Run => unreachable!(),
+                VmState::Run => unreachable!("Program still running after returning from run"),
                 _ => {}
             },
-            VmInstruction::Step => {
-                if let VmState::Stop = vm.step() {
-                    break;
+            VmInstruction::Step => match vm.step() {
+                VmState::Stop => break,
+                VmState::OutOfBounds => {
+                    print_program(&vm);
+                    print_registers(&vm);
+                    eprintln!("error: Program ran out of bounds.");
+                    return;
                 }
-            }
+                _ => {}
+            },
             VmInstruction::Break(line) => {
                 let position = vm.breakpoints.iter().position(|point| *point == line);
                 match position {
@@ -193,31 +198,26 @@ fn print_registers(vm: &Vm) {
 fn print_program(vm: &Vm) {
     use std::cmp::min;
 
-    // todo rewrite all of this, it's terrible!
+    if let Some(span_pc) = vm.span.get(vm.pc) {
+        println!(
+            "Program: (pc = {}, line = {})",
+            vm.pc,
+            span_pc.line_number()
+        );
 
-    println!(
-        "Program: (pc = {}, line = {})",
-        vm.pc,
-        vm.span
-            .get(vm.pc)
-            .cloned()
-            .unwrap_or(Span(vm.span.len()))
-            .line_number()
-    );
-    let lower_stmt = if vm.pc > 5 { vm.pc - 5 } else { 0 };
-    let len = vm.stmts.len();
-    let higher_stmt = if len < 5 { len } else { min(vm.pc + 5, len) };
+        let lower = span_pc.0.saturating_sub(5);
+        let higher = min(vm.code_lines.len(), span_pc.0 + 6);
 
-    let lower_code = vm.span[lower_stmt].0;
-    let higher_code = vm.span[higher_stmt - 1].0;
-
-    for line_index in lower_code..higher_code {
-        let code_line = vm.code_lines[line_index];
-        if line_index == vm.span.get(vm.pc).cloned().unwrap_or(Span(vm.span.len())).0 {
-            println!("> {}  {}", line_index + 1, code_line)
-        } else {
-            println!("{}  {}", line_index + 1, code_line);
+        for line_index in lower..higher {
+            let code_line = vm.code_lines[line_index];
+            if line_index == span_pc.0 {
+                println!("> {}  {}", Span(line_index).line_number(), code_line);
+            } else {
+                println!("{}  {}", Span(line_index).line_number(), code_line);
+            }
         }
+    } else {
+        println!("Reached the end of the program.");
     }
 }
 
