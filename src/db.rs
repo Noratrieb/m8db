@@ -42,9 +42,13 @@ impl Vm<'_> {
         }
     }
 
-    fn run(&mut self) -> VmState {
+    fn run(&mut self, time_kind: VmRunKind) -> VmState {
+        let now = std::time::Instant::now();
         loop {
             if let state @ (VmState::Break | VmState::Stop | VmState::OutOfBounds) = self.step() {
+                if let VmRunKind::WithTime = time_kind {
+                    println!("Vm ran for {}ms.", now.elapsed().as_millis());
+                }
                 return state;
             }
         }
@@ -52,9 +56,15 @@ impl Vm<'_> {
 }
 
 #[derive(Debug, Copy, Clone)]
+enum VmRunKind {
+    WithTime,
+    WithoutTime,
+}
+
+#[derive(Debug, Copy, Clone)]
 enum VmInstruction {
     Step,
-    Run,
+    Run(VmRunKind),
     Break(usize),
     Set(usize, usize),
 }
@@ -72,7 +82,7 @@ pub fn run(code: Code) {
 
     loop {
         match debug_input(&vm) {
-            VmInstruction::Run => match vm.run() {
+            VmInstruction::Run(time_kind) => match vm.run(time_kind) {
                 VmState::Stop => break,
                 VmState::OutOfBounds => {
                     print_program(&vm);
@@ -122,7 +132,12 @@ fn debug_input(vm: &Vm) -> VmInstruction {
                     Some((reg, value)) => return VmInstruction::Set(reg, value),
                     None => println!("Invalid arguments provided"),
                 },
-                "c" | "continue" => return VmInstruction::Run,
+                "c" | "continue" => {
+                    if let Some("time") = iter.next() {
+                        return VmInstruction::Run(VmRunKind::WithTime);
+                    }
+                    return VmInstruction::Run(VmRunKind::WithoutTime);
+                }
                 "s" | "step" => return VmInstruction::Step,
                 _ => {}
             }
@@ -198,7 +213,7 @@ fn print_help() {
     step (s) -- Steps the program forward by one step
     set <register> <value> -- Sets a register to a value
     break <line> (b) -- Set a breakpoint to a line, use again to toggle
-    continue (c) -- Run the program until the next breakpoint
+    continue (c) (time) -- Run the program until the next breakpoint, add 'time' to display execution time
     register (r) -- Shows the contents of the registers
     program (p) -- Shows where the program currently is
     help (h, ?) -- Shows this help page
