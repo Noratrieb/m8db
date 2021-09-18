@@ -1,8 +1,8 @@
-INC 0
-INC 0
+INC 1
+.test1
+.test2
+.test3
+INC 1
 JUMP end
-DEC 0
-DEC 0
-DEC 0
 .end
 STOP

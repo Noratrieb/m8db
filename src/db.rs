@@ -1,9 +1,11 @@
-use crate::stmt::Stmt;
+use crate::stmt::{Code, Stmt};
 use std::io::Write;
 
 #[derive(Debug, Clone)]
-struct Vm {
+struct Vm<'a> {
     stmts: Vec<Stmt>,
+    span: Vec<usize>,
+    code_lines: Vec<&'a str>,
     pc: usize,
     registers: Vec<usize>,
     breakpoints: Vec<usize>,
@@ -17,7 +19,7 @@ enum VmState {
     OutOfBounds,
 }
 
-impl Vm {
+impl Vm<'_> {
     fn step(&mut self) -> VmState {
         let pc = self.pc;
         self.pc += 1;
@@ -57,10 +59,12 @@ enum VmInstruction {
     Set(usize, usize),
 }
 
-pub fn run(stmts: Vec<Stmt>) {
-    let max_register_index = max_register(&stmts);
+pub fn run(code: Code) {
+    let max_register_index = max_register(&code.stmts);
     let mut vm = Vm {
-        stmts,
+        stmts: code.stmts,
+        span: code.span,
+        code_lines: code.code_lines,
         pc: 0,
         registers: vec![0; max_register_index + 1],
         breakpoints: vec![],
@@ -157,16 +161,19 @@ fn print_program(vm: &Vm) {
     use std::cmp::min;
 
     println!("Program:");
-    let lower = if vm.pc > 5 { vm.pc - 5 } else { 0 };
+    let lower_stmt = if vm.pc > 5 { vm.pc - 5 } else { 0 };
     let len = vm.stmts.len();
-    let higher = if len < 5 { len } else { min(vm.pc + 5, len) };
+    let higher_stmt = if len < 5 { len } else { min(vm.pc + 5, len) };
 
-    for i in lower..higher {
-        let stmt = vm.stmts[i];
-        if i == vm.pc {
-            println!("> {}  {}", i, stmt)
+    let lower_code = vm.span[lower_stmt];
+    let higher_code = vm.span[higher_stmt - 1];
+
+    for line_number in lower_code..higher_code {
+        let code_line = vm.code_lines[line_number];
+        if line_number == vm.span[vm.pc] {
+            println!("> {}  {}", line_number, code_line)
         } else {
-            println!("{}  {}", i, stmt);
+            println!("{}  {}", line_number, code_line);
         }
     }
 }

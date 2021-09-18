@@ -11,6 +11,13 @@ pub enum Stmt {
     Stop,
 }
 
+pub struct Code<'a> {
+    pub stmts: Vec<Stmt>,
+    /// Has the same length as `stmts`, points to line numbers where the instructions come from
+    pub span: Vec<usize>,
+    pub code_lines: Vec<&'a str>,
+}
+
 enum IrStmt<'a> {
     Inc(usize),
     Dec(usize),
@@ -20,13 +27,15 @@ enum IrStmt<'a> {
     Stop,
 }
 
-pub fn parse(text: &str) -> Result<Vec<Stmt>, String> {
+pub fn parse(text: &str) -> Result<Code, String> {
     let mut labels = HashMap::new();
 
     let mut statements = Vec::new();
     let mut statement_number = 0;
 
-    for (line_number, line) in text.lines().enumerate() {
+    let code_lines = text.lines().collect::<Vec<_>>();
+
+    for (line_number, line) in code_lines.iter().enumerate() {
         if line.split_whitespace().next().is_none() {
             continue;
         }
@@ -43,26 +52,43 @@ pub fn parse(text: &str) -> Result<Vec<Stmt>, String> {
         }
     }
 
-    statements
+    let result: Result<Vec<(Stmt, usize)>, String> = statements
         .iter()
-        .map(|stmt| match stmt.0 {
-            IrStmt::Inc(r) => Ok(Stmt::Inc(r)),
-            IrStmt::Dec(r) => Ok(Stmt::Dec(r)),
-            IrStmt::IsZero(r, label) => Ok(Stmt::IsZero(
-                r,
-                match labels.get(label) {
-                    Some(line) => *line,
-                    None => return Err(format!("Label '{}' not found on line {}", label, stmt.1)),
-                },
+        .map(|(stmt, span)| match *stmt {
+            IrStmt::Inc(r) => Ok((Stmt::Inc(r), *span)),
+            IrStmt::Dec(r) => Ok((Stmt::Dec(r), *span)),
+            IrStmt::IsZero(r, label) => Ok((
+                Stmt::IsZero(
+                    r,
+                    match labels.get(label) {
+                        Some(line) => *line,
+                        None => {
+                            return Err(format!("Label '{}' not found on line {}", label, span))
+                        }
+                    },
+                ),
+                *span,
             )),
-            IrStmt::Jump(label) => Ok(Stmt::Jump(match labels.get(label) {
-                Some(line) => *line,
-                None => return Err(format!("Label '{}' not found on line {}", label, stmt.1)),
-            })),
-            IrStmt::Stop => Ok(Stmt::Stop),
+            IrStmt::Jump(label) => Ok((
+                Stmt::Jump(match labels.get(label) {
+                    Some(line) => *line,
+                    None => return Err(format!("Label '{}' not found on line {}", label, span)),
+                }),
+                *span,
+            )),
+            IrStmt::Stop => Ok((Stmt::Stop, *span)),
             IrStmt::Label(_) => unreachable!(),
         })
-        .collect()
+        .collect();
+
+    result.map(|vec| {
+        let (stmts, span) = vec.iter().cloned().unzip();
+        Code {
+            stmts,
+            span,
+            code_lines,
+        }
+    })
 }
 
 fn parse_line(line: &str) -> Result<IrStmt, String> {
