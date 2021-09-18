@@ -96,9 +96,9 @@ fn read_and_run<'a>(path: &str) {
     match std::fs::read_to_string(path) {
         Ok(content) => match stmt::parse(&content, filename(&path)) {
             Ok(stmts) => run(stmts),
-            Err(why) => eprintln!("parse error: {}", why),
+            Err(why) => eprintln!("error while parsing: {}.", why),
         },
-        Err(why) => eprintln!("file error: {}", why),
+        Err(why) => eprintln!("error while reading file: {}.", why),
     };
 }
 
@@ -116,11 +116,11 @@ fn loading_input() -> LoadInstruction {
             match str {
                 "l" | "load" => match iter.next() {
                     Some(path) => return LoadInstruction::Load(path.to_owned()),
-                    None => println!("No file path provided to load from"),
+                    None => println!("error: No file path provided to load from."),
                 },
                 "h" | "help" => print_load_help(),
                 "q" | "quit" => return LoadInstruction::Quit,
-                _ => {}
+                cmd => println!("error: Unknown command: {}.", cmd),
             }
         }
     }
@@ -150,7 +150,9 @@ fn run(code: Code) {
                     eprintln!("error: Program ran out of bounds.");
                     return;
                 }
-                VmState::Run => unreachable!("Program still running after returning from run"),
+                VmState::Run => {
+                    unreachable!("internal error: Program still running after returning from run.")
+                }
                 _ => {}
             },
             VmInstruction::Step => match vm.step() {
@@ -195,7 +197,7 @@ fn debug_input(vm: &Vm) -> VmInstruction {
                                     Some(pos) => pos,
                                     None => {
                                         println!(
-                                            "Line number '{}' out of bounds for length {}.",
+                                            "error: Line number '{}' out of bounds for length {}.",
                                             line_number,
                                             vm.code_lines.len()
                                         );
@@ -204,13 +206,13 @@ fn debug_input(vm: &Vm) -> VmInstruction {
                                 };
                             return VmInstruction::Break(stmt_pos);
                         }
-                        Err(_) => println!("Invalid argument provided"),
+                        Err(_) => println!("error: Invalid argument provided."),
                     },
                     None => print_breakpoints(vm),
                 },
                 "set" => match parse_set_command(&mut iter) {
                     Some((reg, value)) => return VmInstruction::Set(reg, value),
-                    None => println!("Invalid arguments provided"),
+                    None => println!("error: Invalid arguments provided."),
                 },
                 "c" | "continue" => {
                     if let Some("time") = iter.next() {
@@ -220,7 +222,7 @@ fn debug_input(vm: &Vm) -> VmInstruction {
                 }
                 "s" | "step" => return VmInstruction::Step,
                 "q" | "quit" => return VmInstruction::Stop,
-                _ => {}
+                cmd => println!("error: Unknown command: {}.", cmd),
             }
         }
     }
@@ -257,11 +259,7 @@ fn print_program(vm: &Vm) {
     use std::cmp::min;
 
     if let Some(span_pc) = vm.span.get(vm.pc) {
-        println!(
-            "Program: (pc = {}, line = {})",
-            vm.pc,
-            span_pc.line_number()
-        );
+        println!("Program:");
 
         let lower = span_pc.0.saturating_sub(5);
         let higher = min(vm.code_lines.len(), span_pc.0 + 6);
