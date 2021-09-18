@@ -2,7 +2,7 @@ mod db;
 mod stmt;
 
 fn main() {
-    let filename = match std::env::args().skip(1).next() {
+    let filename = match std::env::args().nth(1) {
         Some(name) => name,
         None => {
             eprintln!("error: no file provided.\nUsage: <filename>");

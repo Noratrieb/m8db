@@ -11,54 +11,57 @@ pub enum Stmt {
 }
 
 pub fn parse(text: &str) -> Result<Vec<Stmt>, String> {
-    text.lines().map(parse_line).collect()
+    text.lines()
+        .filter(|line| line.split_whitespace().next().is_some())
+        .map(parse_line)
+        .collect()
 }
 
 fn parse_line(line: &str) -> Result<Stmt, String> {
-    const NO_REGISTER: fn() -> String = || "No register".to_string();
-    const NO_LINE_NUMBER: fn() -> String = || "No line number".to_string();
-    const EMPTY_LINE: fn() -> String = || "Empty line not allowed".to_string();
-    const DISPLAY_ERR: fn(ParseIntError) -> String = |parse_err| parse_err.to_string();
+    let no_register = || "No register".to_string();
+    let no_line_number = || "No line number".to_string();
+    let empty_line = || "Empty line not allowed".to_string();
+    let display_err = |parse_err: ParseIntError| parse_err.to_string();
 
     let mut iter = line.split_ascii_whitespace();
-    let first = iter.next().ok_or_else(EMPTY_LINE)?;
+    let first = iter.next().ok_or_else(empty_line)?;
 
     Ok(match first {
         "INC" => {
             let register = iter
                 .next()
-                .ok_or_else(NO_REGISTER)?
+                .ok_or_else(no_register)?
                 .parse()
-                .map_err(DISPLAY_ERR)?;
+                .map_err(display_err)?;
             Stmt::Inc(register)
         }
         "DEC" => {
             let register = iter
                 .next()
-                .ok_or_else(NO_REGISTER)?
+                .ok_or_else(no_register)?
                 .parse()
-                .map_err(DISPLAY_ERR)?;
+                .map_err(display_err)?;
             Stmt::Dec(register)
         }
         "IS_ZERO" => {
             let register = iter
                 .next()
-                .ok_or_else(NO_REGISTER)?
+                .ok_or_else(no_register)?
                 .parse()
-                .map_err(DISPLAY_ERR)?;
+                .map_err(display_err)?;
             let line_number = iter
                 .next()
-                .ok_or_else(NO_LINE_NUMBER)?
+                .ok_or_else(no_line_number)?
                 .parse()
-                .map_err(DISPLAY_ERR)?;
+                .map_err(display_err)?;
             Stmt::IsZero(register, line_number)
         }
         "JUMP" => {
             let line_number = iter
                 .next()
-                .ok_or_else(NO_LINE_NUMBER)?
+                .ok_or_else(no_line_number)?
                 .parse()
-                .map_err(DISPLAY_ERR)?;
+                .map_err(display_err)?;
             Stmt::Jump(line_number)
         }
         "STOP" => Stmt::Stop,

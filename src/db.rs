@@ -14,22 +14,24 @@ enum VmState {
     Run,
     Break,
     Stop,
+    OutOfBounds,
 }
 
 impl Vm {
     fn step(&mut self) -> VmState {
         let pc = self.pc;
         self.pc += 1;
-        match self.stmts[pc] {
-            Stmt::Inc(r) => self.registers[r] += 1,
-            Stmt::Dec(r) => self.registers[r] -= 1,
-            Stmt::IsZero(r, line) => {
+        match self.stmts.get(pc).cloned() {
+            Some(Stmt::Inc(r)) => self.registers[r] += 1,
+            Some(Stmt::Dec(r)) => self.registers[r] -= 1,
+            Some(Stmt::IsZero(r, line)) => {
                 if self.registers[r] == 0 {
                     self.pc = line - 1;
                 }
             }
-            Stmt::Jump(line) => self.pc = line - 1,
-            Stmt::Stop => return VmState::Stop,
+            Some(Stmt::Jump(line)) => self.pc = line - 1,
+            Some(Stmt::Stop) => return VmState::Stop,
+            None => return VmState::OutOfBounds,
         }
         if self.breakpoints.contains(&self.pc) {
             VmState::Break
@@ -40,9 +42,8 @@ impl Vm {
 
     fn run(&mut self) -> VmState {
         loop {
-            match self.step() {
-                state @ (VmState::Break | VmState::Stop) => return state,
-                _ => {}
+            if let state @ (VmState::Break | VmState::Stop | VmState::OutOfBounds) = self.step() {
+                return state;
             }
         }
     }
@@ -66,16 +67,23 @@ pub fn run(stmts: Vec<Stmt>) {
     };
 
     loop {
-        match debug_input(&mut vm) {
+        match debug_input(&vm) {
             VmInstruction::Run => match vm.run() {
                 VmState::Stop => break,
+                VmState::OutOfBounds => {
+                    print_program(&vm);
+                    print_registers(&vm);
+                    eprintln!("error: Program ran out of bounds.");
+                    return;
+                }
                 VmState::Run => unreachable!(),
                 _ => {}
             },
-            VmInstruction::Step => match vm.step() {
-                VmState::Stop => break,
-                _ => {}
-            },
+            VmInstruction::Step => {
+                if let VmState::Stop = vm.step() {
+                    break;
+                }
+            }
             VmInstruction::Break(line) => {
                 let position = vm.breakpoints.iter().position(|point| *point == line);
                 match position {
@@ -92,14 +100,10 @@ pub fn run(stmts: Vec<Stmt>) {
 
 fn debug_input(vm: &Vm) -> VmInstruction {
     loop {
-        let mut input_buf = String::new();
-        print!("(m8db) ");
-        std::io::stdout().flush().unwrap();
-        std::io::stdin().read_line(&mut input_buf).unwrap();
-        let input = input_buf.trim();
+        let input = get_input();
         let mut iter = input.split_ascii_whitespace();
-        match iter.next() {
-            Some(str) => match str {
+        if let Some(str) = iter.next() {
+            match str {
                 "r" | "register" => print_registers(vm),
                 "p" | "program" => print_program(vm),
                 "h" | "?" | "help" => print_help(),
@@ -117,8 +121,7 @@ fn debug_input(vm: &Vm) -> VmInstruction {
                 "c" | "continue" => return VmInstruction::Run,
                 "s" | "step" => return VmInstruction::Step,
                 _ => {}
-            },
-            None => {}
+            }
         }
     }
 }
@@ -194,4 +197,12 @@ fn print_help() {
     help (h, ?) -- Shows this help page
     "
     );
+}
+
+fn get_input() -> String {
+    let mut input_buf = String::new();
+    print!("(m8db) ");
+    std::io::stdout().flush().unwrap();
+    std::io::stdin().read_line(&mut input_buf).unwrap();
+    input_buf.trim().to_owned()
 }
