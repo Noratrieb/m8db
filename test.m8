@@ -1,8 +1,7 @@
 INC 1
-.test1
-.test2
-.test3
-INC 1
-JUMP end
+.start
+DEC 1
+IS_ZERO 1 end
+JUMP start
 .end
 STOP

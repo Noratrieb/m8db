@@ -22,7 +22,6 @@ enum VmState {
 impl Vm<'_> {
     fn step(&mut self) -> VmState {
         let pc = self.pc;
-        self.pc += 1;
         match self.stmts.get(pc).cloned() {
             Some(Stmt::Inc(r)) => self.registers[r] += 1,
             Some(Stmt::Dec(r)) => self.registers[r] -= 1,
@@ -35,6 +34,7 @@ impl Vm<'_> {
             Some(Stmt::Stop) => return VmState::Stop,
             None => return VmState::OutOfBounds,
         }
+        self.pc += 1;
         if self.breakpoints.contains(&self.pc) {
             VmState::Break
         } else {
@@ -160,7 +160,7 @@ fn print_registers(vm: &Vm) {
 fn print_program(vm: &Vm) {
     use std::cmp::min;
 
-    println!("Program:");
+    println!("Program: (pc = {}, line = {})", vm.pc, vm.span[vm.pc]);
     let lower_stmt = if vm.pc > 5 { vm.pc - 5 } else { 0 };
     let len = vm.stmts.len();
     let higher_stmt = if len < 5 { len } else { min(vm.pc + 5, len) };
@@ -168,12 +168,12 @@ fn print_program(vm: &Vm) {
     let lower_code = vm.span[lower_stmt];
     let higher_code = vm.span[higher_stmt - 1];
 
-    for line_number in lower_code..higher_code {
-        let code_line = vm.code_lines[line_number];
-        if line_number == vm.span[vm.pc] {
-            println!("> {}  {}", line_number, code_line)
+    for line_index in lower_code..higher_code {
+        let code_line = vm.code_lines[line_index];
+        if line_index == vm.span[vm.pc] {
+            println!("> {}  {}", line_index + 1, code_line)
         } else {
-            println!("{}  {}", line_number, code_line);
+            println!("{}  {}", line_index + 1, code_line);
         }
     }
 }
