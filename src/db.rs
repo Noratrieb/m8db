@@ -1,10 +1,10 @@
-use crate::stmt::{Code, Stmt};
+use crate::stmt::{Code, LineNumber, Span, Stmt};
 use std::io::Write;
 
 #[derive(Debug, Clone)]
 struct Vm<'a> {
     stmts: Vec<Stmt>,
-    span: Vec<usize>,
+    span: Vec<Span>,
     code_lines: Vec<&'a str>,
     pc: usize,
     registers: Vec<usize>,
@@ -52,6 +52,10 @@ impl Vm<'_> {
                 return state;
             }
         }
+    }
+
+    fn statement_at_span(&self, search_span: Span) -> Option<usize> {
+        self.span.iter().position(|span| *span >= search_span)
     }
 }
 
@@ -122,8 +126,22 @@ fn debug_input(vm: &Vm) -> VmInstruction {
                 "p" | "program" => print_program(vm),
                 "h" | "?" | "help" => print_help(),
                 "b" | "break" => match iter.next() {
-                    Some(num) => match num.parse() {
-                        Ok(num) => return VmInstruction::Break(num),
+                    Some(line_number) => match line_number.parse::<usize>() {
+                        Ok(line_number) => {
+                            let stmt_pos =
+                                match vm.statement_at_span(LineNumber(line_number).span()) {
+                                    Some(pos) => pos,
+                                    None => {
+                                        println!(
+                                            "Line number '{}' out of bounds for length {}.",
+                                            line_number,
+                                            vm.code_lines.len()
+                                        );
+                                        continue;
+                                    }
+                                };
+                            return VmInstruction::Break(stmt_pos);
+                        }
                         Err(_) => println!("Invalid argument provided"),
                     },
                     None => print_breakpoints(vm),
@@ -175,17 +193,27 @@ fn print_registers(vm: &Vm) {
 fn print_program(vm: &Vm) {
     use std::cmp::min;
 
-    println!("Program: (pc = {}, line = {})", vm.pc, vm.span[vm.pc]);
+    // todo rewrite all of this, it's terrible!
+
+    println!(
+        "Program: (pc = {}, line = {})",
+        vm.pc,
+        vm.span
+            .get(vm.pc)
+            .cloned()
+            .unwrap_or(Span(vm.span.len()))
+            .line_number()
+    );
     let lower_stmt = if vm.pc > 5 { vm.pc - 5 } else { 0 };
     let len = vm.stmts.len();
     let higher_stmt = if len < 5 { len } else { min(vm.pc + 5, len) };
 
-    let lower_code = vm.span[lower_stmt];
-    let higher_code = vm.span[higher_stmt - 1];
+    let lower_code = vm.span[lower_stmt].0;
+    let higher_code = vm.span[higher_stmt - 1].0;
 
     for line_index in lower_code..higher_code {
         let code_line = vm.code_lines[line_index];
-        if line_index == vm.span[vm.pc] {
+        if line_index == vm.span.get(vm.pc).cloned().unwrap_or(Span(vm.span.len())).0 {
             println!("> {}  {}", line_index + 1, code_line)
         } else {
             println!("{}  {}", line_index + 1, code_line);

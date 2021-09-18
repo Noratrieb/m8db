@@ -1,7 +1,20 @@
+.test
 INC 1
-.start
-DEC 1
-IS_ZERO 1 end
-JUMP start
-.end
-STOP
+.test
+INC 2
+.test
+INC 3
+.test
+INC 4
+.test
+INC 5
+.test
+INC 6
+.test
+INC 7
+.test
+INC 8
+.test
+INC 9
+.test
+INC 10

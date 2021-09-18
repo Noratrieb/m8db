@@ -2,6 +2,26 @@ use std::collections::HashMap;
 use std::fmt::Formatter;
 use std::num::ParseIntError;
 
+/// A span referencing the line where a statement came from. Starts at 0
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct Span(pub usize);
+
+impl Span {
+    pub fn line_number(&self) -> usize {
+        self.0 + 1
+    }
+}
+
+/// A line number, starts at 1
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct LineNumber(pub usize);
+
+impl LineNumber {
+    pub fn span(&self) -> Span {
+        Span(self.0 - 1)
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum Stmt {
     Inc(usize),
@@ -11,18 +31,21 @@ pub enum Stmt {
     Stop,
 }
 
+#[derive(Debug, Clone)]
 pub struct Code<'a> {
     pub stmts: Vec<Stmt>,
     /// Has the same length as `stmts`, points to line numbers where the instructions come from
-    pub span: Vec<usize>,
+    pub span: Vec<Span>,
     pub code_lines: Vec<&'a str>,
 }
 
 enum IrStmt<'a> {
     Inc(usize),
     Dec(usize),
-    IsZero(usize, &'a str),
-    Jump(&'a str),
+    IsZeroLabel(usize, &'a str),
+    IsZeroLine(usize, LineNumber),
+    JumpLabel(&'a str),
+    JumpLine(LineNumber),
     Label(&'a str),
     Stop,
 }
@@ -35,7 +58,7 @@ pub fn parse(text: &str) -> Result<Code, String> {
 
     let code_lines = text.lines().collect::<Vec<_>>();
 
-    for (line_number, line) in code_lines.iter().enumerate() {
+    for (line_index, line) in code_lines.iter().enumerate() {
         if line.split_whitespace().next().is_none() {
             continue;
         }
@@ -46,33 +69,82 @@ pub fn parse(text: &str) -> Result<Code, String> {
             }
             Ok(stmt) => {
                 statement_number += 1;
-                statements.push((stmt, line_number));
+                statements.push((stmt, Span(line_index)));
             }
-            Err(msg) => return Err(format!("error on line {}: {}", line_number, msg)),
+            Err(msg) => return Err(format!("error on line '{}': {}", line_index - 1, msg)),
         }
     }
 
-    let result: Result<Vec<(Stmt, usize)>, String> = statements
+    let result: Result<Vec<(Stmt, Span)>, String> = statements
         .iter()
         .map(|(stmt, span)| match *stmt {
             IrStmt::Inc(r) => Ok((Stmt::Inc(r), *span)),
             IrStmt::Dec(r) => Ok((Stmt::Dec(r), *span)),
-            IrStmt::IsZero(r, label) => Ok((
+            IrStmt::IsZeroLine(r, line_number) => Ok((
                 Stmt::IsZero(
                     r,
-                    match labels.get(label) {
-                        Some(line) => *line,
+                    match statements
+                        .iter()
+                        .position(|(_, stmt_span)| stmt_span.line_number() == line_number.0)
+                    {
+                        Some(stmt_number) => stmt_number,
                         None => {
-                            return Err(format!("Label '{}' not found on line {}", label, span))
+                            return Err(format!(
+                                "Referencing line '{}' on line '{}': {}, out of bounds",
+                                line_number.0,
+                                span.line_number(),
+                                code_lines[span.0]
+                            ))
                         }
                     },
                 ),
                 *span,
             )),
-            IrStmt::Jump(label) => Ok((
+            IrStmt::JumpLine(line_number) => Ok((
+                Stmt::Jump(
+                    match statements
+                        .iter()
+                        .position(|(_, stmt_span)| stmt_span.line_number() == line_number.0)
+                    {
+                        Some(stmt_number) => stmt_number,
+                        None => {
+                            return Err(format!(
+                                "Referencing line '{}' on line '{}': {}, out of bounds",
+                                line_number.0,
+                                span.line_number(),
+                                code_lines[span.0]
+                            ))
+                        }
+                    },
+                ),
+                *span,
+            )),
+            IrStmt::IsZeroLabel(r, label) => Ok((
+                Stmt::IsZero(
+                    r,
+                    match labels.get(label) {
+                        Some(line) => *line,
+                        None => {
+                            return Err(format!(
+                                "Label '{}' not found on line '{}'",
+                                label,
+                                span.line_number()
+                            ))
+                        }
+                    },
+                ),
+                *span,
+            )),
+            IrStmt::JumpLabel(label) => Ok((
                 Stmt::Jump(match labels.get(label) {
                     Some(line) => *line,
-                    None => return Err(format!("Label '{}' not found on line {}", label, span)),
+                    None => {
+                        return Err(format!(
+                            "Label '{}' not found on line {}",
+                            label,
+                            span.line_number()
+                        ))
+                    }
                 }),
                 *span,
             )),
@@ -93,7 +165,7 @@ pub fn parse(text: &str) -> Result<Code, String> {
 
 fn parse_line(line: &str) -> Result<IrStmt, String> {
     let no_register = || "No register provided".to_string();
-    let no_label = || "No label provided".to_string();
+    let no_label_or_line_number = || "No label or line number provided".to_string();
     let display_err = |parse_err: ParseIntError| parse_err.to_string();
 
     let mut iter = line.split_whitespace();
@@ -122,12 +194,20 @@ fn parse_line(line: &str) -> Result<IrStmt, String> {
                 .ok_or_else(no_register)?
                 .parse()
                 .map_err(display_err)?;
-            let label = iter.next().ok_or_else(no_label)?;
-            IrStmt::IsZero(register, label)
+            let jump_target = iter.next().ok_or_else(no_label_or_line_number)?;
+            if let Ok(line_number) = jump_target.parse::<usize>() {
+                IrStmt::IsZeroLine(register, LineNumber(line_number))
+            } else {
+                IrStmt::IsZeroLabel(register, jump_target)
+            }
         }
         "JUMP" => {
-            let label = iter.next().ok_or_else(no_label)?;
-            IrStmt::Jump(label)
+            let jump_target = iter.next().ok_or_else(no_label_or_line_number)?;
+            if let Ok(line_number) = jump_target.parse::<usize>() {
+                IrStmt::JumpLine(LineNumber(line_number))
+            } else {
+                IrStmt::JumpLabel(jump_target)
+            }
         }
         "STOP" => IrStmt::Stop,
         stmt => {
