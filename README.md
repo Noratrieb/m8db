@@ -10,9 +10,10 @@ Usage: `$ ./m8db <filename>`
 # Instructions:  
 * `INC r`
 * `DEC r`
-* `JUMP line`
+* `JUMP label`
 * `STOP`
-* `IS_ZERO r line`
+* `IS_ZERO r label`
+* `.labelname`
 
-Where `r` is a register number and `line` is a line number.  
-`IS_ZERO` jumps to `line` if `r` is zero
+Where `r` is a register number and `label` is a label name.  
+`IS_ZERO` jumps to `label` if `r` is zero
