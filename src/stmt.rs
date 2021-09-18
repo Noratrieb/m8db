@@ -37,6 +37,7 @@ pub struct Code<'a> {
     /// Has the same length as `stmts`, points to line numbers where the instructions come from
     pub span: Vec<Span>,
     pub code_lines: Vec<&'a str>,
+    pub file_name: String,
 }
 
 enum IrStmt<'a> {
@@ -50,7 +51,7 @@ enum IrStmt<'a> {
     Stop,
 }
 
-pub fn parse(text: &str) -> Result<Code, String> {
+pub fn parse(text: &str, file_name: String) -> Result<Code, String> {
     let mut labels = HashMap::new();
 
     let mut statements = Vec::new();
@@ -159,6 +160,7 @@ pub fn parse(text: &str) -> Result<Code, String> {
             stmts,
             span,
             code_lines,
+            file_name,
         }
     })
 }

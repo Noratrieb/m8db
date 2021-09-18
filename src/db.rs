@@ -1,5 +1,7 @@
+use crate::stmt;
 use crate::stmt::{Code, LineNumber, Span, Stmt};
 use std::io::Write;
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 struct Vm<'a> {
@@ -9,6 +11,7 @@ struct Vm<'a> {
     pc: usize,
     registers: Vec<usize>,
     breakpoints: Vec<usize>,
+    file_name: String,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -71,14 +74,66 @@ enum VmInstruction {
     Run(VmRunKind),
     Break(usize),
     Set(usize, usize),
+    Stop,
 }
 
-pub fn run(code: Code) {
+pub fn start(program_path: Option<String>) {
+    if let Some(path) = program_path {
+        read_and_run(&path);
+    }
+
+    loop {
+        match loading_input() {
+            LoadInstruction::Quit => return,
+            LoadInstruction::Load(path) => read_and_run(&path),
+        }
+    }
+}
+
+fn read_and_run<'a>(path: &str) {
+    let path = Path::new(path);
+
+    match std::fs::read_to_string(path) {
+        Ok(content) => match stmt::parse(&content, filename(&path)) {
+            Ok(stmts) => run(stmts),
+            Err(why) => eprintln!("parse error: {}", why),
+        },
+        Err(why) => eprintln!("file error: {}", why),
+    };
+}
+
+#[derive(Debug, Clone)]
+enum LoadInstruction {
+    Quit,
+    Load(String),
+}
+
+fn loading_input() -> LoadInstruction {
+    loop {
+        let input = get_input(None);
+        let mut iter = input.split_whitespace();
+        if let Some(str) = iter.next() {
+            match str {
+                "l" | "load" => match iter.next() {
+                    Some(path) => return LoadInstruction::Load(path.to_owned()),
+                    None => println!("No file path provided to load from"),
+                },
+                "h" | "help" => print_load_help(),
+                "q" | "quit" => return LoadInstruction::Quit,
+                _ => {}
+            }
+        }
+    }
+}
+
+fn run(code: Code) {
+    println!("Loaded {}.", code.file_name);
     let max_register_index = max_register(&code.stmts);
     let mut vm = Vm {
         stmts: code.stmts,
         span: code.span,
         code_lines: code.code_lines,
+        file_name: code.file_name,
         pc: 0,
         registers: vec![0; max_register_index + 1],
         breakpoints: vec![],
@@ -86,6 +141,7 @@ pub fn run(code: Code) {
 
     loop {
         match debug_input(&vm) {
+            VmInstruction::Stop => break,
             VmInstruction::Run(time_kind) => match vm.run(time_kind) {
                 VmState::Stop => break,
                 VmState::OutOfBounds => {
@@ -119,17 +175,18 @@ pub fn run(code: Code) {
             VmInstruction::Set(r, value) => vm.registers[r] = value,
         }
     }
+    println!("Execution finished.");
 }
 
 fn debug_input(vm: &Vm) -> VmInstruction {
     loop {
-        let input = get_input();
-        let mut iter = input.split_ascii_whitespace();
+        let input = get_input(Some(&vm.file_name));
+        let mut iter = input.split_whitespace();
         if let Some(str) = iter.next() {
             match str {
                 "r" | "register" => print_registers(vm),
                 "p" | "program" => print_program(vm),
-                "h" | "?" | "help" => print_help(),
+                "h" | "?" | "help" => print_debug_help(),
                 "b" | "break" => match iter.next() {
                     Some(line_number) => match line_number.parse::<usize>() {
                         Ok(line_number) => {
@@ -162,6 +219,7 @@ fn debug_input(vm: &Vm) -> VmInstruction {
                     return VmInstruction::Run(VmRunKind::WithoutTime);
                 }
                 "s" | "step" => return VmInstruction::Step,
+                "q" | "quit" => return VmInstruction::Stop,
                 _ => {}
             }
         }
@@ -234,7 +292,18 @@ fn print_breakpoints(vm: &Vm) {
     );
 }
 
-fn print_help() {
+fn print_load_help() {
+    println!(
+        "List of commands and their aliases:
+
+    load (l) <filename> -- Load and run a program
+    quit (q) -- Quits the program
+    help (h, ?) -- Shows this help page
+    "
+    );
+}
+
+fn print_debug_help() {
     println!(
         "List of commands and their aliases:
 
@@ -244,15 +313,23 @@ fn print_help() {
     continue (c) (time) -- Run the program until the next breakpoint, add 'time' to display execution time
     register (r) -- Shows the contents of the registers
     program (p) -- Shows where the program currently is
+    quit (q) -- Stop execution of the current program
     help (h, ?) -- Shows this help page
     "
     );
 }
 
-fn get_input() -> String {
+fn get_input(prompt: Option<&str>) -> String {
     let mut input_buf = String::new();
-    print!("(m8db) ");
+    match prompt {
+        None => print!("(m8db) "),
+        Some(text) => print!("(m8db - {}) ", text),
+    }
     std::io::stdout().flush().unwrap();
     std::io::stdin().read_line(&mut input_buf).unwrap();
     input_buf.trim().to_owned()
+}
+
+fn filename(path: &Path) -> String {
+    path.file_stem().unwrap().to_str().unwrap().to_owned()
 }
