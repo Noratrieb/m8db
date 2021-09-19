@@ -223,8 +223,8 @@ fn parse_line(line: &str) -> Result<IrStmt, String> {
         }
         "STOP" => IrStmt::Stop,
         stmt => {
-            if stmt.starts_with('.') {
-                IrStmt::Label(&stmt[1..])
+            if let Some(stripped) = stmt.strip_prefix('.') {
+                IrStmt::Label(stripped)
             } else if stmt.starts_with('#') {
                 IrStmt::None
             } else {

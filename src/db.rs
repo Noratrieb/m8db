@@ -90,11 +90,11 @@ pub fn start(program_path: Option<String>) {
     }
 }
 
-fn read_and_run<'a>(path: &str) {
+fn read_and_run(path: &str) {
     let path = Path::new(path);
 
     match std::fs::read_to_string(path) {
-        Ok(content) => match stmt::parse(&content, filename(&path)) {
+        Ok(content) => match stmt::parse(&content, filename(path)) {
             Ok(stmts) => run(stmts),
             Err(why) => eprintln!("error while parsing: {}.", why),
         },
