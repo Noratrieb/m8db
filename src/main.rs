@@ -1,5 +1,5 @@
-mod db;
-mod stmt;
+mod parse;
+mod run;
 
 fn main() {
     println!(
@@ -9,5 +9,5 @@ Type 'help' for help
     "
     );
 
-    db::start(std::env::args().nth(1));
+    run::start(std::env::args().nth(1));
 }

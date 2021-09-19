@@ -1,6 +1,5 @@
-# hi
 INC 1
-JUMP 8
+JUMP 7
 INC 2
 STOP
 INC 3

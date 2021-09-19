@@ -1,5 +1,5 @@
-use crate::stmt;
-use crate::stmt::{Code, LineNumber, Span, Stmt};
+use crate::parse;
+use crate::parse::{Code, LineNumber, Register, Span, Stmt, StmtIdx};
 use std::io::Write;
 use std::path::Path;
 
@@ -8,9 +8,9 @@ struct Vm<'a> {
     stmts: Vec<Stmt>,
     span: Vec<Span>,
     code_lines: Vec<&'a str>,
-    pc: usize,
+    pc: StmtIdx,
     registers: Vec<usize>,
-    breakpoints: Vec<usize>,
+    breakpoints: Vec<StmtIdx>,
     file_name: String,
 }
 
@@ -25,19 +25,19 @@ enum VmState {
 impl Vm<'_> {
     fn step(&mut self) -> VmState {
         let pc = self.pc;
-        match self.stmts.get(pc).cloned() {
-            Some(Stmt::Inc(r)) => self.registers[r] += 1,
-            Some(Stmt::Dec(r)) => self.registers[r] -= 1,
+        match self.stmts.get(pc.0).cloned() {
+            Some(Stmt::Inc(r)) => self.registers[r.0] += 1,
+            Some(Stmt::Dec(r)) => self.registers[r.0] -= 1,
             Some(Stmt::IsZero(r, index)) => {
-                if self.registers[r] == 0 {
-                    self.pc = index - 1;
+                if self.registers[r.0] == 0 {
+                    self.pc = StmtIdx(index.0 - 1);
                 }
             }
-            Some(Stmt::Jump(index)) => self.pc = index - 1,
+            Some(Stmt::Jump(index)) => self.pc = StmtIdx(index.0 - 1),
             Some(Stmt::Stop) => return VmState::Stop,
             None => return VmState::OutOfBounds,
         }
-        self.pc += 1;
+        self.pc.0 += 1;
         if self.breakpoints.contains(&self.pc) {
             VmState::Break
         } else {
@@ -57,8 +57,11 @@ impl Vm<'_> {
         }
     }
 
-    fn statement_at_span(&self, search_span: Span) -> Option<usize> {
-        self.span.iter().position(|span| *span >= search_span)
+    fn statement_at_span(&self, search_span: Span) -> Option<StmtIdx> {
+        self.span
+            .iter()
+            .position(|span| *span >= search_span)
+            .map(|idx| StmtIdx(idx))
     }
 }
 
@@ -72,8 +75,8 @@ enum VmRunKind {
 enum VmInstruction {
     Step,
     Run(VmRunKind),
-    Break(usize),
-    Set(usize, usize),
+    Break(StmtIdx),
+    Set(Register, usize),
     Stop,
 }
 
@@ -94,9 +97,9 @@ fn read_and_run(path: &str) {
     let path = Path::new(path);
 
     match std::fs::read_to_string(path) {
-        Ok(content) => match stmt::parse(&content, filename(path)) {
+        Ok(content) => match parse::parse(&content, filename(path)) {
             Ok(stmts) => run(stmts),
-            Err(why) => eprintln!("error while parsing: {}.", why),
+            Err(why) => eprintln!("{}", why),
         },
         Err(why) => eprintln!("error while reading file: {}.", why),
     };
@@ -126,6 +129,10 @@ fn loading_input() -> LoadInstruction {
     }
 }
 
+fn filename(path: &Path) -> String {
+    path.file_stem().unwrap().to_str().unwrap().to_owned()
+}
+
 fn run(code: Code) {
     println!("Loaded {}.", code.file_name);
     let max_register_index = max_register(&code.stmts);
@@ -134,7 +141,7 @@ fn run(code: Code) {
         span: code.span,
         code_lines: code.code_lines,
         file_name: code.file_name,
-        pc: 0,
+        pc: StmtIdx(0),
         registers: vec![0; max_register_index + 1],
         breakpoints: vec![],
     };
@@ -174,7 +181,7 @@ fn run(code: Code) {
                     }
                 }
             }
-            VmInstruction::Set(r, value) => vm.registers[r] = value,
+            VmInstruction::Set(r, value) => vm.registers[r.0] = value,
         }
     }
     println!("Execution finished.");
@@ -228,19 +235,19 @@ fn debug_input(vm: &Vm) -> VmInstruction {
     }
 }
 
-fn parse_set_command<'a>(iter: &mut impl Iterator<Item = &'a str>) -> Option<(usize, usize)> {
-    let reg: usize = iter.next().and_then(|reg| reg.parse().ok())?;
-    let value: usize = iter.next().and_then(|value| value.parse().ok())?;
-    Some((reg, value))
+fn parse_set_command<'a>(iter: &mut impl Iterator<Item = &'a str>) -> Option<(Register, usize)> {
+    let reg = iter.next().and_then(|reg| reg.parse().ok())?;
+    let value = iter.next().and_then(|value| value.parse().ok())?;
+    Some((Register(reg), value))
 }
 
 fn max_register(stmts: &[Stmt]) -> usize {
     stmts
         .iter()
         .map(|stmt| match stmt {
-            Stmt::Inc(r) => *r,
-            Stmt::Dec(r) => *r,
-            Stmt::IsZero(r, _) => *r,
+            Stmt::Inc(r) => r.0,
+            Stmt::Dec(r) => r.0,
+            Stmt::IsZero(r, _) => r.0,
             Stmt::Jump(_) => 0,
             Stmt::Stop => 0,
         })
@@ -258,7 +265,7 @@ fn print_registers(vm: &Vm) {
 fn print_program(vm: &Vm) {
     use std::cmp::min;
 
-    if let Some(span_pc) = vm.span.get(vm.pc) {
+    if let Some(span_pc) = vm.span.get(vm.pc.0) {
         println!("Program:");
 
         let lower = span_pc.0.saturating_sub(5);
@@ -284,7 +291,7 @@ fn print_breakpoints(vm: &Vm) {
     ",
         vm.breakpoints
             .iter()
-            .map(|p| p.to_string())
+            .map(|p| p.0.to_string())
             .collect::<Vec<String>>()
             .join(", ")
     );
@@ -326,8 +333,4 @@ fn get_input(prompt: Option<&str>) -> String {
     std::io::stdout().flush().unwrap();
     std::io::stdin().read_line(&mut input_buf).unwrap();
     input_buf.trim().to_owned()
-}
-
-fn filename(path: &Path) -> String {
-    path.file_stem().unwrap().to_str().unwrap().to_owned()
 }
