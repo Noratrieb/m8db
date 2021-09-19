@@ -28,12 +28,12 @@ impl Vm<'_> {
         match self.stmts.get(pc).cloned() {
             Some(Stmt::Inc(r)) => self.registers[r] += 1,
             Some(Stmt::Dec(r)) => self.registers[r] -= 1,
-            Some(Stmt::IsZero(r, line)) => {
+            Some(Stmt::IsZero(r, index)) => {
                 if self.registers[r] == 0 {
-                    self.pc = line - 1;
+                    self.pc = index - 1;
                 }
             }
-            Some(Stmt::Jump(line)) => self.pc = line - 1,
+            Some(Stmt::Jump(index)) => self.pc = index - 1,
             Some(Stmt::Stop) => return VmState::Stop,
             None => return VmState::OutOfBounds,
         }

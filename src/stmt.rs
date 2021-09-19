@@ -72,7 +72,13 @@ pub fn parse(text: &str, file_name: String) -> Result<Code, String> {
                 statement_number += 1;
                 statements.push((stmt, Span(line_index)));
             }
-            Err(msg) => return Err(format!("error on line '{}': {}", line_index - 1, msg)),
+            Err(msg) => {
+                return Err(format!(
+                    "error on line '{}': {}",
+                    Span(line_index).line_number(),
+                    msg
+                ))
+            }
         }
     }
 
