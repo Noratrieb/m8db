@@ -4,5 +4,5 @@ JUMP 8
 INC 2
 STOP
 INC 3
-#another comment
+
 JUMP 4

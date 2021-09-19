@@ -17,5 +17,7 @@ Usage: `$ ./m8db (filename)`
 * `IS_ZERO r line`
 * `.labelname`
 
+`# anything` is a comment
+
 Where `r` is a register number, `line` is a line number and `label` is a label name.  
 `IS_ZERO` jumps to `label` if `r` is zero

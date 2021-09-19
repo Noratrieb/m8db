@@ -49,6 +49,7 @@ enum IrStmt<'a> {
     JumpLine(LineNumber),
     Label(&'a str),
     Stop,
+    None,
 }
 
 pub fn parse(text: &str, file_name: String) -> Result<Code, String> {
@@ -60,14 +61,12 @@ pub fn parse(text: &str, file_name: String) -> Result<Code, String> {
     let code_lines = text.lines().collect::<Vec<_>>();
 
     for (line_index, line) in code_lines.iter().enumerate() {
-        if line.split_whitespace().next().is_none() {
-            continue;
-        }
         let result = parse_line(line);
         match result {
             Ok(IrStmt::Label(name)) => {
                 labels.insert(name, statement_number);
             }
+            Ok(IrStmt::None) => {}
             Ok(stmt) => {
                 statement_number += 1;
                 statements.push((stmt, Span(line_index)));
@@ -84,6 +83,7 @@ pub fn parse(text: &str, file_name: String) -> Result<Code, String> {
 
     let result: Result<Vec<(Stmt, Span)>, String> = statements
         .iter()
+        .filter(|stmt| !matches!(stmt, (IrStmt::None, _)))
         .map(|(stmt, span)| match *stmt {
             IrStmt::Inc(r) => Ok((Stmt::Inc(r), *span)),
             IrStmt::Dec(r) => Ok((Stmt::Dec(r), *span)),
@@ -157,6 +157,7 @@ pub fn parse(text: &str, file_name: String) -> Result<Code, String> {
             )),
             IrStmt::Stop => Ok((Stmt::Stop, *span)),
             IrStmt::Label(_) => unreachable!(),
+            IrStmt::None => unreachable!(),
         })
         .collect();
 
@@ -177,7 +178,11 @@ fn parse_line(line: &str) -> Result<IrStmt, String> {
     let display_err = |parse_err: ParseIntError| parse_err.to_string();
 
     let mut iter = line.split_whitespace();
-    let first = iter.next().expect("Empty lines filtered out");
+    let first = iter.next();
+    let first = match first {
+        Some(first) => first,
+        None => return Ok(IrStmt::None),
+    };
 
     Ok(match first {
         "INC" => {
@@ -221,6 +226,8 @@ fn parse_line(line: &str) -> Result<IrStmt, String> {
         stmt => {
             if stmt.starts_with('.') {
                 IrStmt::Label(&stmt[1..])
+            } else if stmt.starts_with('#') {
+                IrStmt::None
             } else {
                 return Err(format!("Illegal instruction: '{}'", stmt));
             }
