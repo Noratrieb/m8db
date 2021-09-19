@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::Formatter;
-use std::num::ParseIntError;
+ouse std::num::ParseIntError;
 
 /// A span referencing the line where a statement came from. Starts at 0
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -233,17 +232,4 @@ fn parse_line(line: &str) -> Result<IrStmt, String> {
             }
         }
     })
-}
-
-impl std::fmt::Display for Stmt {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Stmt::Inc(r) => write!(f, "INC {}", r)?,
-            Stmt::Dec(r) => write!(f, "DEC {}", r)?,
-            Stmt::IsZero(r, line) => write!(f, "IS_ZERO {} {}", r, line)?,
-            Stmt::Jump(r) => write!(f, "JUMP {}", r)?,
-            Stmt::Stop => write!(f, "STOP")?,
-        }
-        Ok(())
-    }
 }
