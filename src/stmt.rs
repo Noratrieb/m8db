@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-ouse std::num::ParseIntError;
+use std::num::ParseIntError;
 
 /// A span referencing the line where a statement came from. Starts at 0
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
